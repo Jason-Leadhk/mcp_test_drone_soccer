@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "sequential-thinking": {
+      "command": "C:/nodejs/node.exe", 
+      "args": ["C:/Users/Herf/AppData/Roaming/npm/node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js"],
+      "env": {
+        "DEBUG": "*"
+      }
+    },
+    "fetch": {
+      "command": "python",
+      "args": ["-m", "mcp_server_fetch"]
+    }
+  }
+}

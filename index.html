@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drone Soccer Simulation</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="game-container">
+        <div class="scoreboard">
+            <div class="team-score" id="team1-score">0</div>
+            <div class="timer" id="game-timer">3:00</div>
+            <div class="team-score" id="team2-score">0</div>
+        </div>
+        <canvas id="game-canvas"></canvas>
+        <div class="controls-info">
+            <p>Controls: Use arrow keys or WASD to move your drone</p>
+            <button id="start-button">Start Game</button>
+            <button id="reset-button">Reset Game</button>
+        </div>
+    </div>
+    <script src="physics.js"></script>
+    <script src="game.js"></script>
+</body>
+</html> 
