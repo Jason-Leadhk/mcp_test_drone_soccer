@@ -121,6 +121,12 @@ function init() {
     // Start the game loop
     requestAnimationFrame(gameLoop);
     console.log("Game loop started");
+    
+    // 创建虚拟摇杆UI
+    createVirtualJoystick();
+    
+    // 检测设备类型并显示适当的控制方式
+    detectDeviceAndSetControls();
 }
 
 // Set up event listeners for user input
@@ -424,23 +430,33 @@ function updatePlayerInput(deltaTime) {
     const acceleration = 200;
     let direction = new Vector2D(0, 0);
     
-    // Handle keyboard input
-    if (keys.up || keys.w || keys.W) {
-        direction.y = -1;
-    }
-    if (keys.down || keys.s || keys.S) {
-        direction.y = 1;
-    }
-    if (keys.left || keys.a || keys.A) {
-        direction.x = -1;
-    }
-    if (keys.right || keys.d || keys.D) {
-        direction.x = 1;
+    // 检查是否有摇杆输入
+    if (playerDrone.joystickInput) {
+        // 使用摇杆输入值（更精确的控制）
+        direction.x = playerDrone.joystickInput.x;
+        direction.y = playerDrone.joystickInput.y;
+    } else {
+        // 使用键盘输入
+        if (keys.up || keys.w || keys.W) {
+            direction.y = -1;
+        }
+        if (keys.down || keys.s || keys.S) {
+            direction.y = 1;
+        }
+        if (keys.left || keys.a || keys.A) {
+            direction.x = -1;
+        }
+        if (keys.right || keys.d || keys.D) {
+            direction.x = 1;
+        }
     }
     
-    // Normalize direction if moving diagonally
-    if (direction.x !== 0 && direction.y !== 0) {
-        direction = direction.normalize();
+    // 如果方向向量不为零，则归一化
+    if (direction.x !== 0 || direction.y !== 0) {
+        // 只有当使用键盘且同时按下两个方向键时才需要归一化
+        if (!playerDrone.joystickInput && direction.x !== 0 && direction.y !== 0) {
+            direction = direction.normalize();
+        }
     }
     
     // Apply acceleration
@@ -1029,6 +1045,275 @@ function formatTime(seconds) {
 function updateScoreDisplay() {
     document.getElementById('team1-score').textContent = team1Score;
     document.getElementById('team2-score').textContent = team2Score;
+}
+
+// 创建虚拟摇杆UI
+function createVirtualJoystick() {
+    const gameContainer = document.querySelector('.game-container');
+    
+    // 创建摇杆容器
+    const joystickContainer = document.createElement('div');
+    joystickContainer.id = 'joystick-container';
+    joystickContainer.style.position = 'absolute';
+    joystickContainer.style.bottom = '50px';
+    joystickContainer.style.left = '50%';
+    joystickContainer.style.transform = 'translateX(-50%)';
+    joystickContainer.style.width = '120px';
+    joystickContainer.style.height = '120px';
+    joystickContainer.style.borderRadius = '50%';
+    joystickContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+    joystickContainer.style.border = '2px solid rgba(255, 255, 255, 0.4)';
+    joystickContainer.style.display = 'none'; // 默认隐藏，只在移动设备上显示
+    
+    // 创建摇杆手柄
+    const joystickHandle = document.createElement('div');
+    joystickHandle.id = 'joystick-handle';
+    joystickHandle.style.position = 'absolute';
+    joystickHandle.style.top = '50%';
+    joystickHandle.style.left = '50%';
+    joystickHandle.style.transform = 'translate(-50%, -50%)';
+    joystickHandle.style.width = '50px';
+    joystickHandle.style.height = '50px';
+    joystickHandle.style.borderRadius = '50%';
+    joystickHandle.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+    joystickHandle.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.5)';
+    
+    // 添加到DOM
+    joystickContainer.appendChild(joystickHandle);
+    gameContainer.appendChild(joystickContainer);
+}
+
+// 检测设备类型并设置适当的控制方式
+function detectDeviceAndSetControls() {
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const joystickContainer = document.getElementById('joystick-container');
+    
+    if (isMobile) {
+        // 显示虚拟摇杆
+        joystickContainer.style.display = 'block';
+        
+        // 设置触摸事件监听器
+        setupTouchControls();
+        
+        // 添加移动设备优化
+        optimizeForMobile();
+        
+        // 显示触摸控制说明
+        showTouchControlInstructions();
+    }
+}
+
+// 设置触摸控制
+function setupTouchControls() {
+    const joystickContainer = document.getElementById('joystick-container');
+    const joystickHandle = document.getElementById('joystick-handle');
+    
+    let isDragging = false;
+    let centerX, centerY;
+    let maxDistance = 35; // 摇杆最大移动距离
+    
+    // 触摸开始
+    joystickContainer.addEventListener('touchstart', function(e) {
+        e.preventDefault();
+        isDragging = true;
+        
+        // 获取摇杆中心坐标
+        const rect = joystickContainer.getBoundingClientRect();
+        centerX = rect.width / 2;
+        centerY = rect.height / 2;
+        
+        // 处理触摸位置
+        handleTouch(e);
+    });
+    
+    // 触摸移动
+    joystickContainer.addEventListener('touchmove', function(e) {
+        e.preventDefault();
+        if (isDragging) {
+            handleTouch(e);
+        }
+    });
+    
+    // 触摸结束
+    joystickContainer.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        isDragging = false;
+        
+        // 重置摇杆位置
+        joystickHandle.style.top = '50%';
+        joystickHandle.style.left = '50%';
+        
+        // 停止移动
+        resetJoystickInput();
+    });
+    
+    // 触摸取消
+    joystickContainer.addEventListener('touchcancel', function(e) {
+        e.preventDefault();
+        isDragging = false;
+        
+        // 重置摇杆位置
+        joystickHandle.style.top = '50%';
+        joystickHandle.style.left = '50%';
+        
+        // 停止移动
+        resetJoystickInput();
+    });
+    
+    // 处理触摸位置并移动摇杆
+    function handleTouch(e) {
+        const touch = e.touches[0];
+        const rect = joystickContainer.getBoundingClientRect();
+        
+        // 计算触摸点相对于摇杆中心的位置
+        const touchX = touch.clientX - rect.left;
+        const touchY = touch.clientY - rect.top;
+        
+        // 计算触摸点到中心的距离和角度
+        const deltaX = touchX - centerX;
+        const deltaY = touchY - centerY;
+        const distance = Math.min(Math.sqrt(deltaX * deltaX + deltaY * deltaY), maxDistance);
+        const angle = Math.atan2(deltaY, deltaX);
+        
+        // 计算摇杆手柄的新位置
+        const handleX = centerX + distance * Math.cos(angle);
+        const handleY = centerY + distance * Math.sin(angle);
+        
+        // 更新摇杆手柄位置
+        joystickHandle.style.left = handleX + 'px';
+        joystickHandle.style.top = handleY + 'px';
+        
+        // 将摇杆输入转换为方向输入
+        updateJoystickInput(deltaX / maxDistance, deltaY / maxDistance);
+    }
+}
+
+// 更新摇杆输入
+function updateJoystickInput(x, y) {
+    // 将摇杆位置转换为方向输入
+    // x和y的范围是-1到1
+    
+    // 重置键盘输入
+    keys.up = false;
+    keys.down = false;
+    keys.left = false;
+    keys.right = false;
+    
+    // 设置方向
+    if (y < -0.3) keys.up = true;
+    if (y > 0.3) keys.down = true;
+    if (x < -0.3) keys.left = true;
+    if (x > 0.3) keys.right = true;
+    
+    // 存储原始摇杆值，用于更精确的控制
+    playerDrone.joystickInput = {
+        x: x,
+        y: y
+    };
+}
+
+// 重置摇杆输入
+function resetJoystickInput() {
+    keys.up = false;
+    keys.down = false;
+    keys.left = false;
+    keys.right = false;
+    
+    if (playerDrone) {
+        playerDrone.joystickInput = {
+            x: 0,
+            y: 0
+        };
+    }
+}
+
+// 优化移动设备显示
+function optimizeForMobile() {
+    // 添加viewport meta标签确保正确缩放
+    let viewport = document.querySelector("meta[name=viewport]");
+    if (!viewport) {
+        viewport = document.createElement('meta');
+        viewport.name = 'viewport';
+        document.head.appendChild(viewport);
+    }
+    viewport.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+    
+    // 防止页面滚动和缩放
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    document.body.style.height = '100%';
+    
+    // 调整游戏容器大小
+    const gameContainer = document.querySelector('.game-container');
+    gameContainer.style.width = '100%';
+    gameContainer.style.height = '100%';
+    
+    // 调整画布大小以适应屏幕
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+}
+
+// 调整画布大小
+function resizeCanvas() {
+    const gameContainer = document.querySelector('.game-container');
+    const containerWidth = gameContainer.clientWidth;
+    const containerHeight = gameContainer.clientHeight;
+    
+    // 保持游戏场地的宽高比
+    const aspectRatio = FIELD_WIDTH / FIELD_HEIGHT;
+    let canvasWidth, canvasHeight;
+    
+    if (containerWidth / containerHeight > aspectRatio) {
+        // 容器更宽，以高度为基准
+        canvasHeight = containerHeight;
+        canvasWidth = canvasHeight * aspectRatio;
+    } else {
+        // 容器更高，以宽度为基准
+        canvasWidth = containerWidth;
+        canvasHeight = canvasWidth / aspectRatio;
+    }
+    
+    // 更新画布大小
+    canvas.style.width = canvasWidth + 'px';
+    canvas.style.height = canvasHeight + 'px';
+    
+    // 居中画布
+    canvas.style.position = 'absolute';
+    canvas.style.left = '50%';
+    canvas.style.top = '50%';
+    canvas.style.transform = 'translate(-50%, -50%)';
+}
+
+// 显示触摸控制说明
+function showTouchControlInstructions() {
+    const instructionsElement = document.createElement('div');
+    instructionsElement.id = 'touch-instructions';
+    instructionsElement.style.position = 'absolute';
+    instructionsElement.style.top = '10px';
+    instructionsElement.style.left = '50%';
+    instructionsElement.style.transform = 'translateX(-50%)';
+    instructionsElement.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    instructionsElement.style.color = 'white';
+    instructionsElement.style.padding = '10px';
+    instructionsElement.style.borderRadius = '5px';
+    instructionsElement.style.fontSize = '14px';
+    instructionsElement.style.textAlign = 'center';
+    instructionsElement.style.zIndex = '1000';
+    instructionsElement.textContent = '使用屏幕底部的虚拟摇杆控制无人机';
+    
+    document.querySelector('.game-container').appendChild(instructionsElement);
+    
+    // 3秒后隐藏说明
+    setTimeout(() => {
+        instructionsElement.style.opacity = '0';
+        instructionsElement.style.transition = 'opacity 1s';
+        
+        // 完全移除元素
+        setTimeout(() => {
+            instructionsElement.remove();
+        }, 1000);
+    }, 3000);
 }
 
 // Initialize the game when the page loads

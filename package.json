@@ -1,0 +1,19 @@
+{
+  "name": "mcp_test_drone_soccer",
+  "version": "1.0.0",
+  "description": "A 2D web-based simulation of a 5v5 drone soccer match based on FAI (Fédération Aéronautique Internationale) drone soccer rules with some custom modifications.",
+  "main": "game.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.51.0"
+  }
+}
