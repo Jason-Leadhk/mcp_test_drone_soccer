@@ -29,6 +29,9 @@ let gameTime = GAME_DURATION;
 let team1Score = 0;
 let team2Score = 0;
 let lastTimestamp = 0;
+// 添加两个全局标志变量，用于检查球队是否已经回到过己方半场
+let ready_flag1 = true;
+let ready_flag2 = true;
 
 // Canvas and context
 let canvas;
@@ -194,6 +197,9 @@ function resetGame() {
     gameTime = GAME_DURATION;
     team1Score = 0;
     team2Score = 0;
+    // 重置准备状态标志
+    ready_flag1 = true;
+    ready_flag2 = true;
     
     // Update scoreboard
     document.getElementById('team1-score').textContent = team1Score;
@@ -208,53 +214,116 @@ function resetGame() {
 function createDrones() {
     drones = [];
     
-    // Team 1 drones (left side)
-    for (let i = 0; i < 5; i++) {
-        const isStriker = i === 0;
-        const drone = {
-            position: new Vector2D(
-                FIELD_WIDTH * 0.25,
-                FIELD_HEIGHT * (0.3 + i * 0.1)
-            ),
-            velocity: new Vector2D(0, 0),
-            radius: DRONE_RADIUS,
-            mass: 1,
-            team: 1,
-            isStriker: isStriker,
-            color: TEAM1_COLOR,
-            aiState: i === 0 ? null : {
-                targetPosition: null,
-                decisionTimer: 0
-            }
-        };
-        drones.push(drone);
-        
-        // Set the player's drone (Team 1 striker)
-        if (isStriker) {
-            playerDrone = drone;
-        }
-    }
+    // Team 1 (left side)
+    drones.push({
+        team: 1,
+        isStriker: true,
+        position: new Vector2D(FIELD_WIDTH * 0.25, FIELD_HEIGHT / 2),
+        velocity: new Vector2D(0, 0),
+        radius: DRONE_RADIUS,
+        mass: 1,
+        color: TEAM1_COLOR,
+        isPlayer: true,
+        aiState: {
+            targetPosition: new Vector2D(FIELD_WIDTH * 0.75, FIELD_HEIGHT / 2),
+            decisionTimer: 1 + Math.random()
+        },
+        scoringState: {
+            enteredFromFront: false,
+            exitedThroughBack: false,
+            crossedGoalLine: false,
+            scored: false,
+            returnedToOwnHalf: true
+        },
+        shouldReturnHome: false
+    });
     
-    // Team 2 drones (right side) - AI controlled
-    for (let i = 0; i < 5; i++) {
-        const isStriker = i === 0;
+    // Team 1 defenders
+    for (let i = 0; i < 4; i++) {
         drones.push({
+            team: 1,
+            isStriker: false,
             position: new Vector2D(
-                FIELD_WIDTH * 0.75,
-                FIELD_HEIGHT * (0.3 + i * 0.1)
+                FIELD_WIDTH * 0.15,
+                FIELD_HEIGHT * (0.3 + 0.15 * i)
             ),
             velocity: new Vector2D(0, 0),
             radius: DRONE_RADIUS,
             mass: 1,
-            team: 2,
-            isStriker: isStriker,
-            color: TEAM2_COLOR,
+            color: TEAM1_COLOR,
+            isPlayer: false,
             aiState: {
-                targetPosition: null,
-                decisionTimer: 0
-            }
+                targetPosition: new Vector2D(FIELD_WIDTH * 0.5, FIELD_HEIGHT / 2),
+                decisionTimer: 1 + Math.random()
+            },
+            scoringState: {
+                enteredFromFront: false,
+                exitedThroughBack: false,
+                crossedGoalLine: false,
+                scored: false,
+                returnedToOwnHalf: true
+            },
+            shouldReturnHome: false
         });
     }
+    
+    // Team 2 (right side)
+    drones.push({
+        team: 2,
+        isStriker: true,
+        position: new Vector2D(FIELD_WIDTH * 0.75, FIELD_HEIGHT / 2),
+        velocity: new Vector2D(0, 0),
+        radius: DRONE_RADIUS,
+        mass: 1,
+        color: TEAM2_COLOR,
+        isPlayer: false,
+        aiState: {
+            targetPosition: new Vector2D(FIELD_WIDTH * 0.25, FIELD_HEIGHT / 2),
+            decisionTimer: 1 + Math.random()
+        },
+        scoringState: {
+            enteredFromFront: false,
+            exitedThroughBack: false,
+            crossedGoalLine: false,
+            scored: false,
+            returnedToOwnHalf: true
+        },
+        shouldReturnHome: false
+    });
+    
+    // Team 2 defenders
+    for (let i = 0; i < 4; i++) {
+        drones.push({
+            team: 2,
+            isStriker: false,
+            position: new Vector2D(
+                FIELD_WIDTH * 0.85,
+                FIELD_HEIGHT * (0.3 + 0.15 * i)
+            ),
+            velocity: new Vector2D(0, 0),
+            radius: DRONE_RADIUS,
+            mass: 1,
+            color: TEAM2_COLOR,
+            isPlayer: false,
+            aiState: {
+                targetPosition: new Vector2D(FIELD_WIDTH * 0.5, FIELD_HEIGHT / 2),
+                decisionTimer: 1 + Math.random()
+            },
+            scoringState: {
+                enteredFromFront: false,
+                exitedThroughBack: false,
+                crossedGoalLine: false,
+                scored: false,
+                returnedToOwnHalf: true
+            },
+            shouldReturnHome: false
+        });
+    }
+    
+    // Set player drone
+    playerDrone = drones.find(drone => drone.isPlayer);
+    
+    console.log("Drones initialized");
 }
 
 // Main game loop
@@ -331,42 +400,115 @@ function update(deltaTime) {
     }
 }
 
-// Update player drone based on input
+// Update player input
 function updatePlayerInput(deltaTime) {
-    const acceleration = 200; // Acceleration in pixels per second squared
-    const maxSpeed = 150; // Maximum speed in pixels per second
+    if (!playerDrone) return;
     
-    // Calculate input direction
-    const inputDirection = new Vector2D(0, 0);
-    if (keys.up) inputDirection.y -= 1;
-    if (keys.down) inputDirection.y += 1;
-    if (keys.left) inputDirection.x -= 1;
-    if (keys.right) inputDirection.x += 1;
+    // Check if player drone should return home after team scored
+    if (playerDrone.shouldReturnHome) {
+        // Display a message to the player
+        showMessage(`Return to your half of the field!`, 2000);
+        
+        // Check if drone has reached its own half
+        const inOwnHalf = (playerDrone.team === 1 && playerDrone.position.x < FIELD_WIDTH / 2) || 
+                         (playerDrone.team === 2 && playerDrone.position.x > FIELD_WIDTH / 2);
+        
+        if (inOwnHalf) {
+            // Drone has returned home, clear the flag
+            playerDrone.shouldReturnHome = false;
+            console.log(`Player drone has returned to its own half`);
+            showMessage(`You're back in your half!`, 1000);
+        }
+    }
     
-    // Normalize input direction if not zero
-    const normalizedInput = inputDirection.magnitude() > 0 
-        ? inputDirection.normalize() 
-        : inputDirection;
+    const acceleration = 200;
+    let direction = new Vector2D(0, 0);
+    
+    // Handle keyboard input
+    if (keys.up || keys.w || keys.W) {
+        direction.y = -1;
+    }
+    if (keys.down || keys.s || keys.S) {
+        direction.y = 1;
+    }
+    if (keys.left || keys.a || keys.A) {
+        direction.x = -1;
+    }
+    if (keys.right || keys.d || keys.D) {
+        direction.x = 1;
+    }
+    
+    // Normalize direction if moving diagonally
+    if (direction.x !== 0 && direction.y !== 0) {
+        direction = direction.normalize();
+    }
     
     // Apply acceleration
-    const accelerationVector = normalizedInput.multiply(acceleration * deltaTime);
+    const accelerationVector = direction.multiply(acceleration * deltaTime);
     playerDrone.velocity = playerDrone.velocity.add(accelerationVector);
     
+    // Apply drag when no input
+    if (direction.x === 0 && direction.y === 0) {
+        playerDrone.velocity = playerDrone.velocity.multiply(0.95);
+    }
+    
     // Limit speed
+    const maxSpeed = 150;
     const speed = playerDrone.velocity.magnitude();
     if (speed > maxSpeed) {
         playerDrone.velocity = playerDrone.velocity.normalize().multiply(maxSpeed);
     }
 }
 
+// Show a message to the player
+let messageTimeout = null;
+function showMessage(text, duration = 2000) {
+    // Create message element if it doesn't exist
+    let messageElement = document.getElementById('game-message');
+    if (!messageElement) {
+        messageElement = document.createElement('div');
+        messageElement.id = 'game-message';
+        messageElement.style.position = 'absolute';
+        messageElement.style.top = '100px';
+        messageElement.style.left = '50%';
+        messageElement.style.transform = 'translateX(-50%)';
+        messageElement.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        messageElement.style.color = 'white';
+        messageElement.style.padding = '10px 20px';
+        messageElement.style.borderRadius = '5px';
+        messageElement.style.fontWeight = 'bold';
+        messageElement.style.zIndex = '1000';
+        document.querySelector('.game-container').appendChild(messageElement);
+    }
+    
+    // Set message text
+    messageElement.textContent = text;
+    messageElement.style.display = 'block';
+    
+    // Clear previous timeout
+    if (messageTimeout) {
+        clearTimeout(messageTimeout);
+    }
+    
+    // Hide message after duration
+    messageTimeout = setTimeout(() => {
+        messageElement.style.display = 'none';
+    }, duration);
+}
+
 // Update AI drones
 function updateAI(deltaTime) {
     drones.forEach(drone => {
         if (drone !== playerDrone && drone.aiState) {
+            // Ensure decisionTimer exists
+            if (drone.aiState.decisionTimer === undefined) {
+                drone.aiState.decisionTimer = 1 + Math.random();
+            }
+            
             // Update AI decision timer
             drone.aiState.decisionTimer -= deltaTime;
             
-            // Make new decision if timer expired
+            // If timer expired, make new decision
             if (drone.aiState.decisionTimer <= 0) {
                 makeAIDecision(drone);
                 drone.aiState.decisionTimer = 1 + Math.random(); // 1-2 seconds
@@ -382,6 +524,37 @@ function updateAI(deltaTime) {
 
 // Make AI decision for a drone
 function makeAIDecision(drone) {
+    // Check if drone should return home after team scored
+    if (drone.shouldReturnHome) {
+        // Target a position in their own half
+        let targetX;
+        if (drone.team === 1) {
+            // Team 1 (left side)
+            targetX = FIELD_WIDTH * 0.25; // 1/4 of the field width
+        } else {
+            // Team 2 (right side)
+            targetX = FIELD_WIDTH * 0.75; // 3/4 of the field width
+        }
+        
+        // Set target position in own half
+        drone.aiState.targetPosition = new Vector2D(
+            targetX,
+            FIELD_HEIGHT / 2 + (Math.random() - 0.5) * 100 // Random Y position near center
+        );
+        
+        // Check if drone has reached its own half
+        const inOwnHalf = (drone.team === 1 && drone.position.x < FIELD_WIDTH / 2) || 
+                         (drone.team === 2 && drone.position.x > FIELD_WIDTH / 2);
+        
+        if (inOwnHalf) {
+            // Drone has returned home, clear the flag
+            drone.shouldReturnHome = false;
+            console.log(`Team ${drone.team} drone has returned to its own half`);
+        }
+        
+        return; // Skip normal AI behavior
+    }
+    
     // Different behavior based on role
     if (drone.isStriker) {
         // Check if the striker needs to return to their own half after scoring
@@ -414,12 +587,12 @@ function makeAIDecision(drone) {
             let goalX, goalY;
             
             if (targetGoal.team === 1) {
-                // Left goal
-                goalX = topPost.position.x + topPost.width / 2;
+                // Left goal - 使用右侧边缘
+                goalX = topPost.position.x + topPost.width;
                 goalY = topPost.position.y + topPost.height + (bottomPost.position.y - (topPost.position.y + topPost.height)) / 2;
             } else {
-                // Right goal
-                goalX = topPost.position.x + topPost.width / 2;
+                // Right goal - 使用左侧边缘
+                goalX = topPost.position.x;
                 goalY = topPost.position.y + topPost.height + (bottomPost.position.y - (topPost.position.y + topPost.height)) / 2;
             }
             
@@ -502,75 +675,113 @@ function updatePhysics(deltaTime) {
 function checkGoals() {
     // Check all drones for scoring
     drones.forEach(drone => {
+        // Only check strikers for scoring
+        if (!drone.isStriker) {
+            return;
+        }
+        
         // Check against opposing goal
         const opposingGoal = drone.team === 1 ? goals[1] : goals[0];
-        // Also check against own goal for own goal detection
-        const ownGoal = drone.team === 1 ? goals[0] : goals[1];
         
         // Debug drone position and velocity
-        if (drone.isStriker) {
-            console.log(`Team ${drone.team} striker position: (${drone.position.x.toFixed(2)}, ${drone.position.y.toFixed(2)}), velocity: (${drone.velocity.x.toFixed(2)}, ${drone.velocity.y.toFixed(2)})`);
+        console.log(`Team ${drone.team} striker position: (${drone.position.x.toFixed(2)}, ${drone.position.y.toFixed(2)}), velocity: (${drone.velocity.x.toFixed(2)}, ${drone.velocity.y.toFixed(2)})`);
+        
+        // Check if all team drones are in their own half
+        const allDronesInOwnHalf = checkAllTeamDronesInOwnHalf(drone.team);
+        
+        // 更新准备状态标志
+        if (allDronesInOwnHalf) {
+            if (drone.team === 1) {
+                ready_flag1 = true;
+            } else {
+                ready_flag2 = true;
+            }
         }
         
         // Check for scoring in opposing goal
         const scoringResult = physics.checkGoal(drone, opposingGoal);
         if (scoringResult) {
-            console.log(`Scoring result for Team ${drone.team}: isStriker=${scoringResult.isStriker}, ownGoal=${scoringResult.ownGoal}`);
+            // 使用准备状态标志替代直接检查
+            const teamReady = drone.team === 1 ? ready_flag1 : ready_flag2;
             
-            if (scoringResult.isStriker && !scoringResult.ownGoal) {
-                // Valid goal by a striker
-                console.log(`Team ${drone.team} scored a valid goal!`);
+            // Check if team is ready (all drones have returned to their own half)
+            if (teamReady) {
+                console.log(`Team ${drone.team} scored a valid goal! Team is ready.`);
                 
                 // Update score
                 if (drone.team === 1) {
                     team1Score++;
+                    // 设置标志为false，需要重新回到己方半场
+                    ready_flag1 = false;
                     console.log(`Team 1 score increased to ${team1Score}`);
                 } else {
                     team2Score++;
+                    // 设置标志为false，需要重新回到己方半场
+                    ready_flag2 = false;
                     console.log(`Team 2 score increased to ${team2Score}`);
                 }
-            } else if (!scoringResult.isStriker) {
-                // Penalty: non-striker entered the goal
-                console.log(`Team ${drone.team} penalty: non-striker entered the goal!`);
                 
-                // Deduct point
-                if (drone.team === 1) {
-                    team1Score = Math.max(0, team1Score - 1); // Prevent negative score
-                    console.log(`Team 1 score decreased to ${team1Score}`);
-                } else {
-                    team2Score = Math.max(0, team2Score - 1); // Prevent negative score
-                    console.log(`Team 2 score decreased to ${team2Score}`);
-                }
-            }
-            
-            // Update score display
-            updateScoreDisplay();
-            
-            // Reset scoring state, but not positions and speeds
-            resetScoringState();
-        }
-        
-        // Check for own goal - must enter from front and exit through back
-        const ownGoalResult = physics.checkGoal(drone, ownGoal);
-        if (ownGoalResult && ownGoalResult.ownGoal) {
-            console.log(`Team ${drone.team} scored an own goal! (entered from front and exited through back)`);
-            
-            // Update score (point for the opposing team)
-            if (drone.team === 1) {
-                team2Score++;
-                console.log(`Team 2 score increased to ${team2Score} (from Team 1 own goal)`);
+                // Update score display
+                updateScoreDisplay();
+                
+                // Reset scoring state, but not positions and speeds
+                resetScoringState();
+                
+                // Set all team drones to return to their own half
+                setTeamDronesToReturnHome(drone.team);
             } else {
-                team1Score++;
-                console.log(`Team 1 score increased to ${team1Score} (from Team 2 own goal)`);
+                console.log(`Team ${drone.team} goal not counted! Team is not ready.`);
+                // Reset just this drone's scoring state
+                resetDroneScoringState(drone);
             }
-            
-            // Update score display
-            updateScoreDisplay();
-            
-            // Reset scoring state, but not positions and speeds
-            resetScoringState();
         }
     });
+}
+
+/**
+ * Check if all drones from a team are in their own half
+ * @param {number} team - The team number (1 or 2)
+ * @returns {boolean} - True if all drones from the team are in their own half
+ */
+function checkAllTeamDronesInOwnHalf(team) {
+    const teamDrones = drones.filter(d => d.team === team);
+    
+    // Check if all drones from the team are in their own half
+    return teamDrones.every(drone => {
+        if (team === 1) {
+            // Team 1 (left side)
+            return drone.position.x < FIELD_WIDTH / 2;
+        } else {
+            // Team 2 (right side)
+            return drone.position.x > FIELD_WIDTH / 2;
+        }
+    });
+}
+
+/**
+ * Set all drones from a team to return to their own half
+ * @param {number} team - The team number (1 or 2)
+ */
+function setTeamDronesToReturnHome(team) {
+    const teamDrones = drones.filter(d => d.team === team);
+    
+    teamDrones.forEach(drone => {
+        drone.shouldReturnHome = true;
+        console.log(`Setting Team ${team} drone to return home`);
+    });
+}
+
+/**
+ * Reset scoring state for a single drone
+ * @param {Object} drone - The drone to reset
+ */
+function resetDroneScoringState(drone) {
+    if (drone.scoringState) {
+        drone.scoringState.enteredFromFront = false;
+        drone.scoringState.exitedThroughBack = false;
+        drone.scoringState.crossedGoalLine = false;
+        drone.scoringState.scored = false;
+    }
 }
 
 /**
@@ -578,14 +789,7 @@ function checkGoals() {
  */
 function resetScoringState() {
     drones.forEach(drone => {
-        if (drone.scoringState) {
-            drone.scoringState.enteredFromFront = false;
-            drone.scoringState.exitedThroughBack = false;
-            drone.scoringState.crossedGoalLine = false;
-            drone.scoringState.scored = false;
-            drone.scoringState.ownGoal = false;
-            // Don't reset returnedToOwnHalf here - it should remain false until the striker returns to their own half
-        }
+        resetDroneScoringState(drone);
     });
 }
 
@@ -659,6 +863,9 @@ function render() {
     
     // Draw drones
     drawDrones();
+    
+    // Draw team status indicators
+    drawTeamStatusIndicators();
 }
 
 // Draw the field
@@ -770,6 +977,43 @@ function drawDrones() {
             ctx.stroke();
         }
     });
+}
+
+// Draw team status indicators
+function drawTeamStatusIndicators() {
+    // 使用准备状态标志替代直接检查
+    const team1AllInOwnHalf = ready_flag1;
+    const team2AllInOwnHalf = ready_flag2;
+    
+    // Team 1 indicator (left side)
+    ctx.fillStyle = team1AllInOwnHalf ? 'rgba(0, 255, 0, 0.5)' : 'rgba(255, 0, 0, 0.5)';
+    ctx.beginPath();
+    ctx.arc(50, 30, 15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // Team 2 indicator (right side)
+    ctx.fillStyle = team2AllInOwnHalf ? 'rgba(0, 255, 0, 0.5)' : 'rgba(255, 0, 0, 0.5)';
+    ctx.beginPath();
+    ctx.arc(FIELD_WIDTH - 50, 30, 15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // Add text labels
+    ctx.fillStyle = '#000';
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Team 1', 50, 55);
+    ctx.fillText('Team 2', FIELD_WIDTH - 50, 55);
+    
+    // Add status text
+    ctx.font = '10px Arial';
+    ctx.fillText(ready_flag1 ? 'Ready' : 'Not Ready', 50, 70);
+    ctx.fillText(ready_flag2 ? 'Ready' : 'Not Ready', FIELD_WIDTH - 50, 70);
 }
 
 // Format time as MM:SS

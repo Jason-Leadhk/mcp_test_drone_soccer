@@ -50,4 +50,93 @@ test('Drone Soccer Game - Aspect Ratio and Scoring Rules', async ({ page }) => {
   
   // Take a final screenshot
   await page.screenshot({ path: 'tests/final-state.png' });
+});
+
+test('Drone Soccer Game - Team Return to Own Half Rule', async ({ page }) => {
+  // Navigate to the game page
+  await page.goto('http://localhost:8000');
+  
+  // Wait for the canvas to be visible
+  const canvas = await page.waitForSelector('canvas#game-canvas');
+  
+  // Take a screenshot of the initial state
+  await page.screenshot({ path: 'tests/initial-state.png' });
+  
+  // Check that the team status indicators are displayed
+  // These are drawn on the canvas, so we can't directly check them with selectors
+  
+  // Start the game
+  await page.click('#start-button');
+  await page.waitForTimeout(1000);
+  
+  // Take a screenshot after starting the game
+  await page.screenshot({ path: 'tests/game-started.png' });
+  
+  // Set up console message monitoring
+  const consoleMessages = [];
+  page.on('console', msg => {
+    consoleMessages.push(msg.text());
+    console.log(`BROWSER: ${msg.text()}`);
+  });
+  
+  // Simulate player movement to try to score a goal
+  // Move right towards the opponent's goal
+  await page.keyboard.down('ArrowRight');
+  await page.waitForTimeout(3000);
+  await page.keyboard.up('ArrowRight');
+  
+  // Move up/down to navigate
+  await page.keyboard.down('ArrowUp');
+  await page.waitForTimeout(1000);
+  await page.keyboard.up('ArrowUp');
+  
+  await page.keyboard.down('ArrowDown');
+  await page.waitForTimeout(1000);
+  await page.keyboard.up('ArrowDown');
+  
+  // Continue moving right
+  await page.keyboard.down('ArrowRight');
+  await page.waitForTimeout(3000);
+  await page.keyboard.up('ArrowRight');
+  
+  // Take a screenshot after movement
+  await page.screenshot({ path: 'tests/after-movement.png' });
+  
+  // Wait for potential scoring events
+  await page.waitForTimeout(2000);
+  
+  // Check if we see any messages about returning to own half
+  const returnMessages = consoleMessages.filter(msg => 
+    msg.includes('return') || msg.includes('Return') || 
+    msg.includes('home') || msg.includes('half')
+  );
+  
+  console.log('Return messages:', returnMessages);
+  
+  // Check if we see any messages about goals being counted or not counted
+  const goalMessages = consoleMessages.filter(msg => 
+    msg.includes('goal') || msg.includes('Goal') || 
+    msg.includes('score') || msg.includes('Score')
+  );
+  
+  console.log('Goal messages:', goalMessages);
+  
+  // Move left to return to own half
+  await page.keyboard.down('ArrowLeft');
+  await page.waitForTimeout(5000);
+  await page.keyboard.up('ArrowLeft');
+  
+  // Take a screenshot after returning
+  await page.screenshot({ path: 'tests/after-returning.png' });
+  
+  // Wait to see if status changes
+  await page.waitForTimeout(2000);
+  
+  // Final screenshot
+  await page.screenshot({ path: 'tests/final-state.png' });
+  
+  // Check the score display
+  const team1Score = await page.textContent('#team1-score');
+  const team2Score = await page.textContent('#team2-score');
+  console.log(`Final scores - Team 1: ${team1Score}, Team 2: ${team2Score}`);
 }); 

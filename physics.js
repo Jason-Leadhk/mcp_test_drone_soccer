@@ -139,6 +139,16 @@ class PhysicsEngine {
      * @returns {Object|false} - Scoring information or false if no score
      */
     checkGoal(drone, goal) {
+        // Only strikers can score
+        if (!drone.isStriker) {
+            return false;
+        }
+        
+        // Can only score in opponent's goal
+        if (drone.team === goal.team) {
+            return false;
+        }
+        
         // Get goal posts
         const topPost = goal.posts[0];
         const bottomPost = goal.posts[1];
@@ -170,7 +180,6 @@ class PhysicsEngine {
                 exitedThroughBack: false,
                 crossedGoalLine: false,
                 scored: false,
-                ownGoal: false,
                 returnedToOwnHalf: true // Initially true to allow scoring at game start
             };
         }
@@ -184,9 +193,6 @@ class PhysicsEngine {
         let isCrossingGoalLine = false;
         let isEnteringFromFront = false;
         let isExitingThroughBack = false;
-        
-        // Check for own goal (drone's team matches goal's team)
-        const isOwnGoal = drone.team === goal.team;
         
         if (goal.team === 1) {
             // Left goal
@@ -211,13 +217,12 @@ class PhysicsEngine {
             // Update scoring state
             if (isEnteringFromFront && !drone.scoringState.enteredFromFront) {
                 drone.scoringState.enteredFromFront = true;
-                drone.scoringState.ownGoal = isOwnGoal;
-                console.log(`Team ${drone.team} drone entered left goal from front (${isOwnGoal ? 'own goal' : 'opponent goal'})`);
+                console.log(`Team ${drone.team} drone entered left goal from front`);
             }
             
             if (drone.scoringState.enteredFromFront && isExitingThroughBack && !drone.scoringState.exitedThroughBack) {
                 drone.scoringState.exitedThroughBack = true;
-                console.log(`Team ${drone.team} drone exited left goal through back (${isOwnGoal ? 'own goal' : 'opponent goal'})`);
+                console.log(`Team ${drone.team} drone exited left goal through back`);
             }
         } else {
             // Right goal
@@ -242,13 +247,12 @@ class PhysicsEngine {
             // Update scoring state
             if (isEnteringFromFront && !drone.scoringState.enteredFromFront) {
                 drone.scoringState.enteredFromFront = true;
-                drone.scoringState.ownGoal = isOwnGoal;
-                console.log(`Team ${drone.team} drone entered right goal from front (${isOwnGoal ? 'own goal' : 'opponent goal'})`);
+                console.log(`Team ${drone.team} drone entered right goal from front`);
             }
             
             if (drone.scoringState.enteredFromFront && isExitingThroughBack && !drone.scoringState.exitedThroughBack) {
                 drone.scoringState.exitedThroughBack = true;
-                console.log(`Team ${drone.team} drone exited right goal through back (${isOwnGoal ? 'own goal' : 'opponent goal'})`);
+                console.log(`Team ${drone.team} drone exited right goal through back`);
             }
         }
         
@@ -256,25 +260,20 @@ class PhysicsEngine {
         drone.scoringState.crossedGoalLine = isCrossingGoalLine;
         
         // Check if a goal has been scored (entered from front and exited through back)
-        // AND the striker has returned to their own half after their last goal (for regular goals only)
+        // AND the striker has returned to their own half after their last goal
         if (drone.scoringState.enteredFromFront && 
             drone.scoringState.exitedThroughBack && 
             !drone.scoringState.scored &&
-            (isOwnGoal || drone.scoringState.returnedToOwnHalf)) { // Own goals don't need the returnedToOwnHalf check
+            drone.scoringState.returnedToOwnHalf) {
             
             drone.scoringState.scored = true;
+            drone.scoringState.returnedToOwnHalf = false; // Reset this flag - must return to own half before scoring again
             
-            // Only reset returnedToOwnHalf for regular goals, not own goals
-            if (!isOwnGoal) {
-                drone.scoringState.returnedToOwnHalf = false; // Reset this flag - must return to own half before scoring again
-            }
-            
-            console.log(`Team ${drone.team} drone scored in ${goal.team === 1 ? 'left' : 'right'} goal! isStriker: ${drone.isStriker}, ownGoal: ${isOwnGoal}`);
+            console.log(`Team ${drone.team} drone scored in ${goal.team === 1 ? 'left' : 'right'} goal!`);
             
             // Return scoring information
             return {
-                isStriker: drone.isStriker,
-                ownGoal: isOwnGoal
+                isStriker: true
             };
         }
         
