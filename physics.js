@@ -46,7 +46,7 @@ class PhysicsEngine {
         this.objects = [];
         this.collisionCallbacks = [];
         this.gravity = new Vector2D(0, 0); // No gravity in this simulation
-        this.friction = 0.98; // Friction coefficient
+        this.friction = 0.995; // Reduced friction coefficient since we're using inertia
     }
 
     /**
@@ -81,7 +81,7 @@ class PhysicsEngine {
         }
         
         // Calculate restitution (bounciness)
-        const restitution = 0.8;
+        const restitution = 0.9;
         
         // Calculate impulse scalar
         let j = -(1 + restitution) * velocityAlongNormal;
@@ -110,25 +110,25 @@ class PhysicsEngine {
         // Check left boundary
         if (obj.position.x - obj.radius < bounds.x) {
             obj.position.x = bounds.x + obj.radius;
-            obj.velocity.x = -obj.velocity.x * 0.8; // Bounce with some energy loss
+            obj.velocity.x = -obj.velocity.x * 0.6; // Bounce with some energy loss
         }
         
         // Check right boundary
         if (obj.position.x + obj.radius > bounds.x + bounds.width) {
             obj.position.x = bounds.x + bounds.width - obj.radius;
-            obj.velocity.x = -obj.velocity.x * 0.8;
+            obj.velocity.x = -obj.velocity.x * 0.6;
         }
         
         // Check top boundary
         if (obj.position.y - obj.radius < bounds.y) {
             obj.position.y = bounds.y + obj.radius;
-            obj.velocity.y = -obj.velocity.y * 0.8;
+            obj.velocity.y = -obj.velocity.y * 0.6;
         }
         
         // Check bottom boundary
         if (obj.position.y + obj.radius > bounds.y + bounds.height) {
             obj.position.y = bounds.y + bounds.height - obj.radius;
-            obj.velocity.y = -obj.velocity.y * 0.8;
+            obj.velocity.y = -obj.velocity.y * 0.6;
         }
     }
 
@@ -373,8 +373,8 @@ class PhysicsEngine {
      * @param {number} deltaTime - Time elapsed since last update in seconds
      */
     update(obj, deltaTime) {
-        // Apply friction
-        obj.velocity = obj.velocity.multiply(this.friction);
+        // Apply a very mild friction - less than before since we're handling acceleration/deceleration with inertia
+        obj.velocity = obj.velocity.multiply(0.998);
         
         // Update position based on velocity
         obj.position = obj.position.add(obj.velocity.multiply(deltaTime));

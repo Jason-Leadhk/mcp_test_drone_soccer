@@ -224,7 +224,7 @@ function createDrones() {
     drones.push({
         team: 1,
         isStriker: true,
-        position: new Vector2D(FIELD_WIDTH * 0.25, FIELD_HEIGHT / 2),
+        position: new Vector2D(FIELD_WIDTH * 0.15, FIELD_HEIGHT / 2),
         velocity: new Vector2D(0, 0),
         radius: DRONE_RADIUS,
         mass: 1,
@@ -251,7 +251,7 @@ function createDrones() {
             isStriker: false,
             position: new Vector2D(
                 FIELD_WIDTH * 0.15,
-                FIELD_HEIGHT * (0.3 + 0.15 * i)
+                FIELD_HEIGHT * (0.2 + 0.2 * i)
             ),
             velocity: new Vector2D(0, 0),
             radius: DRONE_RADIUS,
@@ -277,7 +277,7 @@ function createDrones() {
     drones.push({
         team: 2,
         isStriker: true,
-        position: new Vector2D(FIELD_WIDTH * 0.75, FIELD_HEIGHT / 2),
+        position: new Vector2D(FIELD_WIDTH * 0.85, FIELD_HEIGHT / 2),
         velocity: new Vector2D(0, 0),
         radius: DRONE_RADIUS,
         mass: 1,
@@ -304,7 +304,7 @@ function createDrones() {
             isStriker: false,
             position: new Vector2D(
                 FIELD_WIDTH * 0.85,
-                FIELD_HEIGHT * (0.3 + 0.15 * i)
+                FIELD_HEIGHT * (0.2 + 0.2 * i)
             ),
             velocity: new Vector2D(0, 0),
             radius: DRONE_RADIUS,
@@ -459,21 +459,28 @@ function updatePlayerInput(deltaTime) {
         }
     }
     
-    // Apply acceleration
-    const accelerationVector = direction.multiply(acceleration * deltaTime);
-    playerDrone.velocity = playerDrone.velocity.add(accelerationVector);
+    // Calculate target velocity based on input direction
+    const maxSpeed = 200;
+    const targetVelocity = direction.multiply(maxSpeed);
     
-    // Apply drag when no input
-    if (direction.x === 0 && direction.y === 0) {
-        playerDrone.velocity = playerDrone.velocity.multiply(0.95);
-    }
+    // Apply inertia with time constant of 1 second
+    // The formula is: new_velocity = current_velocity + (target_velocity - current_velocity) * (deltaTime / timeConstant)
+    const timeConstant = 1.0; // 1 second time constant
+    //const inertiaFactor = Math.min(deltaTime / timeConstant, 1.0); // Clamp to maximum of 1.0
+    const inertiaFactor = 1/50; 
+    // Calculate velocity change with inertia
+    const velocityChange = targetVelocity.subtract(playerDrone.velocity).multiply(inertiaFactor);
     
-    // Limit speed
-    const maxSpeed = 150;
-    const speed = playerDrone.velocity.magnitude();
-    if (speed > maxSpeed) {
-        playerDrone.velocity = playerDrone.velocity.normalize().multiply(maxSpeed);
-    }
+    // Apply velocity change
+    playerDrone.velocity = playerDrone.velocity.add(velocityChange);
+    
+    // Apply drag when no input (still with inertia)
+/*     if (direction.x === 0 && direction.y === 0) {
+        // Apply stronger drag when no input, but still respect inertia
+        const dragFactor = Math.min(deltaTime / (timeConstant * 0.5), 1.0); // Faster deceleration
+        dragFactor=0.001;
+        playerDrone.velocity = playerDrone.velocity.multiply(1.0 - dragFactor);
+    } */
 }
 
 // Show a message to the player
@@ -546,10 +553,12 @@ function makeAIDecision(drone) {
         let targetX;
         if (drone.team === 1) {
             // Team 1 (left side)
-            targetX = FIELD_WIDTH * 0.25; // 1/4 of the field width
+            //targetX = FIELD_WIDTH * 0.25; // 1/4 of the field width
+            targetX = FIELD_WIDTH * 0.49; // 0.49 of the field width
         } else {
             // Team 2 (right side)
-            targetX = FIELD_WIDTH * 0.75; // 3/4 of the field width
+            //targetX = FIELD_WIDTH * 0.75; // 3/4 of the field width
+            targetX = FIELD_WIDTH * 0.51; // 0.51 of the field width
         }
         
         // Set target position in own half
@@ -579,10 +588,12 @@ function makeAIDecision(drone) {
             let targetX;
             if (drone.team === 1) {
                 // Team 1 (left side)
-                targetX = FIELD_WIDTH * 0.25; // 1/4 of the field width
+                //targetX = FIELD_WIDTH * 0.25; // 1/4 of the field width
+                targetX = FIELD_WIDTH  * 0.49; // 0.49 of the field width
             } else {
                 // Team 2 (right side)
-                targetX = FIELD_WIDTH * 0.75; // 3/4 of the field width
+                //targetX = FIELD_WIDTH * 0.75; // 3/4 of the field width
+                targetX = FIELD_WIDTH  * 0.51; // 0.51 of the field width
             }
             
             // Set target position in own half
@@ -635,21 +646,24 @@ function makeAIDecision(drone) {
 
 // Move AI drone towards target
 function moveTowardsTarget(drone, deltaTime) {
-    const acceleration = 180; // Slightly less than player
-    const maxSpeed = 130; // Slightly less than player
+    const maxSpeed = 200; 
     
     // Calculate direction to target
     const direction = drone.aiState.targetPosition.subtract(drone.position).normalize();
     
-    // Apply acceleration
-    const accelerationVector = direction.multiply(acceleration * deltaTime);
-    drone.velocity = drone.velocity.add(accelerationVector);
+    // Calculate target velocity based on direction
+    const targetVelocity = direction.multiply(maxSpeed);
     
-    // Limit speed
-    const speed = drone.velocity.magnitude();
-    if (speed > maxSpeed) {
-        drone.velocity = drone.velocity.normalize().multiply(maxSpeed);
-    }
+    // Apply inertia with time constant of 1 second
+    // The formula is: new_velocity = current_velocity + (target_velocity - current_velocity) * (deltaTime / timeConstant)
+    const timeConstant = 1.5; // 1 second time constant
+    //const inertiaFactor = Math.min(deltaTime / timeConstant, 1.0); // Clamp to maximum of 1.0
+    const inertiaFactor = 1/50; 
+    // Calculate velocity change with inertia
+    const velocityChange = targetVelocity.subtract(drone.velocity).multiply(inertiaFactor);
+    
+    // Apply velocity change
+    drone.velocity = drone.velocity.add(velocityChange);
 }
 
 // Update physics for all drones
