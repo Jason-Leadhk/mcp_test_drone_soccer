@@ -16,7 +16,7 @@ const GOAL_POST_GAP = 40; // 0.8m = 40px
 const GOAL_OFFSET = 100; // 2m = 100px
 const GOAL_WALL_THICKNESS = 5;
 const CENTER_LINE_THICKNESS = 2;
-const GAME_DURATION = 180; // 3 minutes in seconds
+const GAME_DURATION = 60; // 3 minutes in seconds
 
 // Team colors
 const TEAM1_COLOR = '#FF4136'; // Red
@@ -35,6 +35,12 @@ let ready_flag2 = true;
 
 // 添加全局变量用于记录最后得分的队伍
 let lastScoringTeam = 0; // 0表示没有队伍得分，1表示队伍1得分，2表示队伍2得分
+
+// 添加游戏结束UI相关变量
+let gameOverUI = null;
+let gameOverAnimations = [];
+let isGameOver = false;
+let gameOverTimer = null; // 添加游戏结束定时器变量
 
 // Canvas and context
 let canvas;
@@ -206,6 +212,9 @@ function startGame() {
 
 // Reset the game
 function resetGame() {
+    // 清除所有动画和定时器
+    clearAllAnimations();
+    
     gameRunning = false;
     gameTime = GAME_DURATION;
     team1Score = 0;
@@ -215,6 +224,8 @@ function resetGame() {
     ready_flag2 = true;
     // 重置最后得分队伍
     lastScoringTeam = 0;
+    // 重置游戏结束状态
+    isGameOver = false;
     
     // Update scoreboard
     document.getElementById('team1-score').textContent = team1Score;
@@ -373,6 +384,11 @@ function update(deltaTime) {
         if (gameTime <= 0) {
             gameTime = 0;
             gameRunning = false;
+            
+            // Check for game over when time runs out
+            if (!isGameOver) {
+                checkGameOver();
+            }
         }
         document.getElementById('game-timer').textContent = formatTime(gameTime);
         
@@ -413,6 +429,11 @@ function update(deltaTime) {
         
         // 更新动画
         updateAnimations(deltaTime);
+        
+        // 更新游戏结束动画
+        if (gameOverAnimations.length > 0) {
+            gameOverAnimations = gameOverAnimations.filter(animation => animation.update(deltaTime));
+        }
     } catch (e) {
         console.error("Error in update:", e);
     }
@@ -1246,6 +1267,15 @@ function updateAnimations(deltaTime) {
     
     // 更新粒子效果
     confettiParticles = confettiParticles.filter(particle => particle.update(deltaTime));
+    
+    // 更新游戏结束动画
+    if (gameOverAnimations.length > 0) {
+        // 过滤掉已经完成的动画
+        gameOverAnimations = gameOverAnimations.filter(animation => {
+            // 调用动画的update方法，如果返回false则表示动画已完成
+            return animation.update(deltaTime);
+        });
+    }
 }
 
 // 绘制动画
@@ -1255,275 +1285,620 @@ function drawAnimations() {
     
     // 绘制所有粒子
     confettiParticles.forEach(particle => particle.draw(ctx));
+    
+    // 绘制游戏结束动画
+    gameOverAnimations.forEach(animation => animation.draw(ctx));
 }
 
-// 创建虚拟摇杆UI
-function createVirtualJoystick() {
-    const gameContainer = document.querySelector('.game-container');
-    
-    // 创建摇杆容器
-    const joystickContainer = document.createElement('div');
-    joystickContainer.id = 'joystick-container';
-    joystickContainer.style.position = 'absolute';
-    joystickContainer.style.bottom = '50px';
-    joystickContainer.style.left = '50%';
-    joystickContainer.style.transform = 'translateX(-50%)';
-    joystickContainer.style.width = '120px';
-    joystickContainer.style.height = '120px';
-    joystickContainer.style.borderRadius = '50%';
-    joystickContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
-    joystickContainer.style.border = '2px solid rgba(255, 255, 255, 0.4)';
-    joystickContainer.style.display = 'none'; // 默认隐藏，只在移动设备上显示
-    
-    // 创建摇杆手柄
-    const joystickHandle = document.createElement('div');
-    joystickHandle.id = 'joystick-handle';
-    joystickHandle.style.position = 'absolute';
-    joystickHandle.style.top = '50%';
-    joystickHandle.style.left = '50%';
-    joystickHandle.style.transform = 'translate(-50%, -50%)';
-    joystickHandle.style.width = '50px';
-    joystickHandle.style.height = '50px';
-    joystickHandle.style.borderRadius = '50%';
-    joystickHandle.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
-    joystickHandle.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.5)';
-    
-    // 添加到DOM
-    joystickContainer.appendChild(joystickHandle);
-    gameContainer.appendChild(joystickContainer);
-}
-
-// 检测设备类型并设置适当的控制方式
-function detectDeviceAndSetControls() {
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    const joystickContainer = document.getElementById('joystick-container');
-    
-    if (isMobile) {
-        // 显示虚拟摇杆
-        joystickContainer.style.display = 'block';
+/**
+ * 检查游戏是否结束，并创建相应的游戏结束UI
+ */
+function checkGameOver() {
+    if (gameTime <= 0 || isGameOver) {
+        isGameOver = true;
         
-        // 设置触摸事件监听器
-        setupTouchControls();
-        
-        // 添加移动设备优化
-        optimizeForMobile();
-        
-        // 显示触摸控制说明
-        showTouchControlInstructions();
-    }
-}
-
-// 设置触摸控制
-function setupTouchControls() {
-    const joystickContainer = document.getElementById('joystick-container');
-    const joystickHandle = document.getElementById('joystick-handle');
-    
-    let isDragging = false;
-    let centerX, centerY;
-    let maxDistance = 35; // 摇杆最大移动距离
-    
-    // 触摸开始
-    joystickContainer.addEventListener('touchstart', function(e) {
-        e.preventDefault();
-        isDragging = true;
-        
-        // 获取摇杆中心坐标
-        const rect = joystickContainer.getBoundingClientRect();
-        centerX = rect.width / 2;
-        centerY = rect.height / 2;
-        
-        // 处理触摸位置
-        handleTouch(e);
-    });
-    
-    // 触摸移动
-    joystickContainer.addEventListener('touchmove', function(e) {
-        e.preventDefault();
-        if (isDragging) {
-            handleTouch(e);
+        // 确定游戏结果
+        let result;
+        if (team1Score > team2Score) {
+            // 玩家是队伍1，所以玩家获胜
+            result = 'win';
+        } else if (team1Score < team2Score) {
+            // 玩家是队伍1，所以玩家失败
+            result = 'lose';
+        } else {
+            // 平局
+            result = 'tie';
         }
-    });
-    
-    // 触摸结束
-    joystickContainer.addEventListener('touchend', function(e) {
-        e.preventDefault();
-        isDragging = false;
         
-        // 重置摇杆位置
-        joystickHandle.style.top = '50%';
-        joystickHandle.style.left = '50%';
+        // 创建游戏结束UI
+        createGameOverUI(result);
         
-        // 停止移动
-        resetJoystickInput();
-    });
-    
-    // 触摸取消
-    joystickContainer.addEventListener('touchcancel', function(e) {
-        e.preventDefault();
-        isDragging = false;
-        
-        // 重置摇杆位置
-        joystickHandle.style.top = '50%';
-        joystickHandle.style.left = '50%';
-        
-        // 停止移动
-        resetJoystickInput();
-    });
-    
-    // 处理触摸位置并移动摇杆
-    function handleTouch(e) {
-        const touch = e.touches[0];
-        const rect = joystickContainer.getBoundingClientRect();
-        
-        // 计算触摸点相对于摇杆中心的位置
-        const touchX = touch.clientX - rect.left;
-        const touchY = touch.clientY - rect.top;
-        
-        // 计算触摸点到中心的距离和角度
-        const deltaX = touchX - centerX;
-        const deltaY = touchY - centerY;
-        const distance = Math.min(Math.sqrt(deltaX * deltaX + deltaY * deltaY), maxDistance);
-        const angle = Math.atan2(deltaY, deltaX);
-        
-        // 计算摇杆手柄的新位置
-        const handleX = centerX + distance * Math.cos(angle);
-        const handleY = centerY + distance * Math.sin(angle);
-        
-        // 更新摇杆手柄位置
-        joystickHandle.style.left = handleX + 'px';
-        joystickHandle.style.top = handleY + 'px';
-        
-        // 将摇杆输入转换为方向输入
-        updateJoystickInput(deltaX / maxDistance, deltaY / maxDistance);
+        console.log(`Game over! Result: ${result}`);
     }
 }
 
-// 更新摇杆输入
-function updateJoystickInput(x, y) {
-    // 将摇杆位置转换为方向输入
-    // x和y的范围是-1到1
-    
-    // 重置键盘输入
-    keys.up = false;
-    keys.down = false;
-    keys.left = false;
-    keys.right = false;
-    
-    // 设置方向
-    if (y < -0.3) keys.up = true;
-    if (y > 0.3) keys.down = true;
-    if (x < -0.3) keys.left = true;
-    if (x > 0.3) keys.right = true;
-    
-    // 存储原始摇杆值，用于更精确的控制
-    playerDrone.joystickInput = {
-        x: x,
-        y: y
-    };
-}
-
-// 重置摇杆输入
-function resetJoystickInput() {
-    keys.up = false;
-    keys.down = false;
-    keys.left = false;
-    keys.right = false;
-    
-    if (playerDrone) {
-        playerDrone.joystickInput = {
-            x: 0,
-            y: 0
-        };
-    }
-}
-
-// 优化移动设备显示
-function optimizeForMobile() {
-    // 添加viewport meta标签确保正确缩放
-    let viewport = document.querySelector("meta[name=viewport]");
-    if (!viewport) {
-        viewport = document.createElement('meta');
-        viewport.name = 'viewport';
-        document.head.appendChild(viewport);
-    }
-    viewport.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
-    
-    // 防止页面滚动和缩放
-    document.body.style.overflow = 'hidden';
-    document.body.style.position = 'fixed';
-    document.body.style.width = '100%';
-    document.body.style.height = '100%';
-    
-    // 调整游戏容器大小
-    const gameContainer = document.querySelector('.game-container');
-    gameContainer.style.width = '100%';
-    gameContainer.style.height = '100%';
-    
-    // 调整画布大小以适应屏幕
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-}
-
-// 调整画布大小
-function resizeCanvas() {
-    const gameContainer = document.querySelector('.game-container');
-    const containerWidth = gameContainer.clientWidth;
-    const containerHeight = gameContainer.clientHeight;
-    
-    // 保持游戏场地的宽高比
-    const aspectRatio = FIELD_WIDTH / FIELD_HEIGHT;
-    let canvasWidth, canvasHeight;
-    
-    if (containerWidth / containerHeight > aspectRatio) {
-        // 容器更宽，以高度为基准
-        canvasHeight = containerHeight;
-        canvasWidth = canvasHeight * aspectRatio;
-    } else {
-        // 容器更高，以宽度为基准
-        canvasWidth = containerWidth;
-        canvasHeight = canvasWidth / aspectRatio;
+/**
+ * 创建游戏结束UI
+ * @param {string} result - 游戏结果：'win', 'lose', 或 'tie'
+ */
+function createGameOverUI(result) {
+    // 清除之前的游戏结束定时器（如果存在）
+    if (gameOverTimer) {
+        clearTimeout(gameOverTimer);
+        gameOverTimer = null;
     }
     
-    // 更新画布大小
-    canvas.style.width = canvasWidth + 'px';
-    canvas.style.height = canvasHeight + 'px';
-    
-    // 居中画布
-    canvas.style.position = 'absolute';
-    canvas.style.left = '50%';
-    canvas.style.top = '50%';
-    canvas.style.transform = 'translate(-50%, -50%)';
-}
-
-// 显示触摸控制说明
-function showTouchControlInstructions() {
-    const instructionsElement = document.createElement('div');
-    instructionsElement.id = 'touch-instructions';
-    instructionsElement.style.position = 'absolute';
-    instructionsElement.style.top = '10px';
-    instructionsElement.style.left = '50%';
-    instructionsElement.style.transform = 'translateX(-50%)';
-    instructionsElement.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-    instructionsElement.style.color = 'white';
-    instructionsElement.style.padding = '10px';
-    instructionsElement.style.borderRadius = '5px';
-    instructionsElement.style.fontSize = '14px';
-    instructionsElement.style.textAlign = 'center';
-    instructionsElement.style.zIndex = '1000';
-    instructionsElement.textContent = '使用屏幕底部的虚拟摇杆控制无人机';
-    
-    document.querySelector('.game-container').appendChild(instructionsElement);
-    
-    // 3秒后隐藏说明
-    setTimeout(() => {
-        instructionsElement.style.opacity = '0';
-        instructionsElement.style.transition = 'opacity 1s';
+    // 创建游戏结束容器
+    if (!gameOverUI) {
+        gameOverUI = document.createElement('div');
+        gameOverUI.id = 'game-over-ui';
+        gameOverUI.style.position = 'absolute';
+        gameOverUI.style.top = '50%';
+        gameOverUI.style.left = '50%';
+        gameOverUI.style.transform = 'translate(-50%, -50%)';
+        gameOverUI.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        gameOverUI.style.color = 'white';
+        gameOverUI.style.padding = '30px';
+        gameOverUI.style.borderRadius = '15px';
+        gameOverUI.style.textAlign = 'center';
+        gameOverUI.style.zIndex = '1000';
+        gameOverUI.style.boxShadow = '0 0 20px rgba(255, 255, 255, 0.5)';
+        gameOverUI.style.opacity = '0';
+        gameOverUI.style.transition = 'opacity 1s';
         
-        // 完全移除元素
+        // 添加到游戏容器
+        document.querySelector('.game-container').appendChild(gameOverUI);
+        
+        // 淡入效果
         setTimeout(() => {
-            instructionsElement.remove();
-        }, 1000);
+            gameOverUI.style.opacity = '1';
+        }, 100);
+    }
+    
+    // 设置游戏结束标题和消息
+    let title, message, color;
+    
+    switch (result) {
+        case 'win':
+            title = '胜利!';
+            message = `恭喜! 你的队伍以 ${team1Score} - ${team2Score} 获胜!`;
+            color = '#4CAF50'; // 绿色
+            break;
+        case 'lose':
+            title = '失败!';
+            message = `很遗憾! 你的队伍以 ${team1Score} - ${team2Score} 失败!`;
+            color = '#F44336'; // 红色
+            break;
+        case 'tie':
+            title = '平局!';
+            message = `比赛结束! 最终比分 ${team1Score} - ${team2Score}`;
+            color = '#FFC107'; // 黄色
+            break;
+    }
+     
+    // 设置内容 - 移除按钮，只显示结果
+    gameOverUI.innerHTML = `
+        <h1 style="font-size: 48px; margin-bottom: 20px; color: ${color};">${title}</h1>
+        <p style="font-size: 24px; margin-bottom: 30px;">${message}</p>
+        <p style="font-size: 18px; color: #ccc;">游戏将在3秒后重置...</p>
+    `;
+    
+    // 创建游戏结束动画效果
+    createGameOverAnimations(result);
+    
+    // 设置3秒后自动重置游戏的定时器
+    gameOverTimer = setTimeout(() => {
+        // 清除所有动画
+        clearAllAnimations();
+        
+        // 隐藏游戏结束UI
+        if (gameOverUI) {
+            gameOverUI.style.opacity = '0';
+            setTimeout(() => {
+                if (gameOverUI) {
+                    gameOverUI.remove();
+                    gameOverUI = null;
+                }
+                
+                // 重置游戏
+                resetGame();
+                isGameOver = false;
+            }, 500);
+        }
     }, 3000);
+}
+
+/**
+ * 创建游戏结束动画效果
+ * @param {string} result - 游戏结果：'win', 'lose', 或 'tie'
+ */
+function createGameOverAnimations(result) {
+    // 清除现有动画
+    gameOverAnimations = [];
+    
+    // 根据结果创建不同的动画效果
+    switch (result) {
+        case 'win':
+            // 胜利动画 - 金色烟花和闪光
+            createVictoryAnimations();
+            break;
+        case 'lose':
+            // 失败动画 - 暗色下落粒子
+            createDefeatAnimations();
+            break;
+        case 'tie':
+            // 平局动画 - 中性色彩的粒子
+            createTieAnimations();
+            break;
+    }
+}
+
+/**
+ * 创建胜利动画效果
+ */
+function createVictoryAnimations() {
+    // 初始化烟花定时器数组（如果不存在）
+    if (!window.fireworkTimers) {
+        window.fireworkTimers = [];
+    }
+    
+    // 创建胜利文字动画
+    const victoryTextAnimation = {
+        text: "VICTORY!",
+        x: FIELD_WIDTH / 2,
+        y: FIELD_HEIGHT / 3,
+        size: 20,
+        maxSize: 120,
+        alpha: 0,
+        growSpeed: 2,
+        fadeSpeed: 0.01,
+        color: '#FFD700', // 金色
+        growing: true,
+        update: function(deltaTime) {
+            if (this.growing) {
+                this.size += this.growSpeed;
+                this.alpha += this.fadeSpeed * 2;
+                if (this.size >= this.maxSize) {
+                    this.growing = false;
+                }
+            } else {
+                this.alpha -= this.fadeSpeed * 0.5; // 缓慢淡出
+            }
+            return this.alpha > 0;
+        },
+        draw: function(ctx) {
+            ctx.globalAlpha = this.alpha;
+            ctx.fillStyle = this.color;
+            ctx.font = `bold ${this.size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(this.text, this.x, this.y);
+            
+            // 添加文字阴影效果
+            ctx.shadowColor = '#FFA500';
+            ctx.shadowBlur = 20;
+            ctx.fillText(this.text, this.x, this.y);
+            ctx.shadowBlur = 0;
+            
+            ctx.globalAlpha = 1.0;
+        }
+    };
+    
+    // 添加到动画列表
+    gameOverAnimations.push(victoryTextAnimation);
+    
+    // 创建金色烟花效果
+    for (let i = 0; i < 5; i++) {
+        // 存储定时器ID以便后续清除
+        const timerId = setTimeout(() => {
+            createFirework(
+                Math.random() * FIELD_WIDTH,
+                Math.random() * FIELD_HEIGHT / 2,
+                '#FFD700', // 金色
+                100 + Math.random() * 50
+            );
+        }, i * 500); // 每隔0.5秒发射一个烟花
+        
+        // 将定时器ID添加到数组中
+        window.fireworkTimers.push(timerId);
+    }
+    
+    // 创建闪光效果
+    const flashAnimation = {
+        alpha: 0.5,
+        fadeSpeed: 0.02,
+        color: '#FFFF00', // 黄色
+        update: function(deltaTime) {
+            this.alpha -= this.fadeSpeed;
+            return this.alpha > 0;
+        },
+        draw: function(ctx) {
+            ctx.globalAlpha = this.alpha;
+            ctx.fillStyle = this.color;
+            ctx.fillRect(0, 0, FIELD_WIDTH, FIELD_HEIGHT);
+            ctx.globalAlpha = 1.0;
+        }
+    };
+    
+    // 添加到动画列表
+    gameOverAnimations.push(flashAnimation);
+    
+    // 创建奖杯图标动画
+    const trophyAnimation = {
+        x: FIELD_WIDTH / 2,
+        y: FIELD_HEIGHT * 0.6,
+        size: 0,
+        maxSize: 100,
+        alpha: 0,
+        growSpeed: 2,
+        rotationSpeed: 0.05,
+        rotation: 0,
+        update: function(deltaTime) {
+            if (this.size < this.maxSize) {
+                this.size += this.growSpeed;
+                this.alpha = Math.min(1, this.size / (this.maxSize * 0.5));
+            }
+            this.rotation += this.rotationSpeed;
+            return gameTime <= 0 && isGameOver; // 只在游戏结束状态下显示
+        },
+        draw: function(ctx) {
+            ctx.save();
+            ctx.globalAlpha = this.alpha;
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.rotation);
+            
+            // 绘制简单的奖杯图标
+            ctx.fillStyle = '#FFD700'; // 金色
+            
+            // 奖杯杯身
+            ctx.beginPath();
+            ctx.arc(0, -this.size * 0.3, this.size * 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 奖杯底座
+            ctx.fillRect(-this.size * 0.25, this.size * 0.1, this.size * 0.5, this.size * 0.2);
+            
+            // 奖杯柄
+            ctx.fillRect(-this.size * 0.05, -this.size * 0.3, this.size * 0.1, this.size * 0.4);
+            
+            ctx.restore();
+        }
+    };
+    
+    // 添加到动画列表
+    gameOverAnimations.push(trophyAnimation);
+}
+
+/**
+ * 创建失败动画效果
+ */
+function createDefeatAnimations() {
+    // 初始化烟花定时器数组（如果不存在）
+    if (!window.fireworkTimers) {
+        window.fireworkTimers = [];
+    }
+    
+    // 创建失败文字动画
+    const defeatTextAnimation = {
+        text: "DEFEAT",
+        x: FIELD_WIDTH / 2,
+        y: FIELD_HEIGHT / 3,
+        size: 20,
+        maxSize: 100,
+        alpha: 0,
+        growSpeed: 1.5,
+        fadeSpeed: 0.01,
+        color: '#F44336', // 红色
+        growing: true,
+        update: function(deltaTime) {
+            if (this.growing) {
+                this.size += this.growSpeed;
+                this.alpha += this.fadeSpeed * 2;
+                if (this.size >= this.maxSize) {
+                    this.growing = false;
+                }
+            } else {
+                this.alpha -= this.fadeSpeed * 0.5; // 缓慢淡出
+            }
+            return this.alpha > 0;
+        },
+        draw: function(ctx) {
+            ctx.globalAlpha = this.alpha;
+            ctx.fillStyle = this.color;
+            ctx.font = `bold ${this.size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(this.text, this.x, this.y);
+            
+            // 添加文字阴影效果
+            ctx.shadowColor = '#800000';
+            ctx.shadowBlur = 15;
+            ctx.fillText(this.text, this.x, this.y);
+            ctx.shadowBlur = 0;
+            
+            ctx.globalAlpha = 1.0;
+        }
+    };
+    
+    // 添加到动画列表
+    gameOverAnimations.push(defeatTextAnimation);
+    
+    // 创建暗色下落粒子
+    for (let i = 0; i < 100; i++) {
+        const particle = {
+            x: Math.random() * FIELD_WIDTH,
+            y: -Math.random() * 50, // 从屏幕顶部开始
+            size: 3 + Math.random() * 7,
+            speedX: (Math.random() - 0.5) * 2,
+            speedY: 2 + Math.random() * 5,
+            rotation: Math.random() * Math.PI * 2,
+            rotationSpeed: (Math.random() - 0.5) * 0.1,
+            color: `rgba(${50 + Math.random() * 50}, ${20 + Math.random() * 30}, ${20 + Math.random() * 30}, ${0.7 + Math.random() * 0.3})`,
+            alpha: 0.7 + Math.random() * 0.3,
+            fadeSpeed: 0.005 + Math.random() * 0.01,
+            update: function(deltaTime) {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.rotation += this.rotationSpeed;
+                
+                // 如果粒子到达屏幕底部，重置到顶部
+                if (this.y > FIELD_HEIGHT + 50) {
+                    this.y = -Math.random() * 50;
+                    this.x = Math.random() * FIELD_WIDTH;
+                    this.alpha = 0.7 + Math.random() * 0.3;
+                }
+                
+                // 修改为3秒后结束动画
+                return gameTime <= 0 && isGameOver; // 只在游戏结束状态下显示
+            },
+            draw: function(ctx) {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.fillStyle = this.color;
+                ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+                ctx.restore();
+            }
+        };
+        gameOverAnimations.push(particle);
+    }
+    
+    // 创建暗色闪光效果
+    const flashAnimation = {
+        alpha: 0.7,
+        fadeSpeed: 0.01,
+        color: '#800000', // 暗红色
+        update: function(deltaTime) {
+            this.alpha -= this.fadeSpeed;
+            return this.alpha > 0;
+        },
+        draw: function(ctx) {
+            ctx.globalAlpha = this.alpha;
+            ctx.fillStyle = this.color;
+            ctx.fillRect(0, 0, FIELD_WIDTH, FIELD_HEIGHT);
+            ctx.globalAlpha = 1.0;
+        }
+    };
+    
+    // 添加到动画列表
+    gameOverAnimations.push(flashAnimation);
+}
+
+/**
+ * 创建平局动画效果
+ */
+function createTieAnimations() {
+    // 初始化烟花定时器数组（如果不存在）
+    if (!window.fireworkTimers) {
+        window.fireworkTimers = [];
+    }
+    
+    // 创建平局文字动画
+    const tieTextAnimation = {
+        text: "DRAW",
+        x: FIELD_WIDTH / 2,
+        y: FIELD_HEIGHT / 3,
+        size: 20,
+        maxSize: 100,
+        alpha: 0,
+        growSpeed: 1.5,
+        fadeSpeed: 0.01,
+        color: '#FFC107', // 黄色
+        growing: true,
+        update: function(deltaTime) {
+            if (this.growing) {
+                this.size += this.growSpeed;
+                this.alpha += this.fadeSpeed * 2;
+                if (this.size >= this.maxSize) {
+                    this.growing = false;
+                }
+            } else {
+                this.alpha -= this.fadeSpeed * 0.5; // 缓慢淡出
+            }
+            return this.alpha > 0;
+        },
+        draw: function(ctx) {
+            ctx.globalAlpha = this.alpha;
+            ctx.fillStyle = this.color;
+            ctx.font = `bold ${this.size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(this.text, this.x, this.y);
+            
+            // 添加文字阴影效果
+            ctx.shadowColor = '#B8860B';
+            ctx.shadowBlur = 15;
+            ctx.fillText(this.text, this.x, this.y);
+            ctx.shadowBlur = 0;
+            
+            ctx.globalAlpha = 1.0;
+        }
+    };
+    
+    // 添加到动画列表
+    gameOverAnimations.push(tieTextAnimation);
+    
+    // 创建中性色彩的粒子
+    for (let i = 0; i < 150; i++) {
+        const particle = {
+            x: Math.random() * FIELD_WIDTH,
+            y: Math.random() * FIELD_HEIGHT,
+            size: 2 + Math.random() * 5,
+            speedX: (Math.random() - 0.5) * 3,
+            speedY: (Math.random() - 0.5) * 3,
+            rotation: Math.random() * Math.PI * 2,
+            rotationSpeed: (Math.random() - 0.5) * 0.1,
+            color: `rgba(${180 + Math.random() * 75}, ${180 + Math.random() * 75}, ${180 + Math.random() * 75}, ${0.6 + Math.random() * 0.4})`,
+            alpha: 0.6 + Math.random() * 0.4,
+            fadeSpeed: 0.01 + Math.random() * 0.02,
+            update: function(deltaTime) {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.rotation += this.rotationSpeed;
+                this.alpha -= this.fadeSpeed;
+                
+                // 如果粒子淡出，重新创建
+                if (this.alpha <= 0) {
+                    this.x = Math.random() * FIELD_WIDTH;
+                    this.y = Math.random() * FIELD_HEIGHT;
+                    this.alpha = 0.6 + Math.random() * 0.4;
+                }
+                
+                // 修改为3秒后结束动画
+                return gameTime <= 0 && isGameOver; // 只在游戏结束状态下显示
+            },
+            draw: function(ctx) {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.fillStyle = this.color;
+                ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+                ctx.restore();
+            }
+        };
+        gameOverAnimations.push(particle);
+    }
+    
+    // 创建中性闪光效果
+    const flashAnimation = {
+        alpha: 0.5,
+        fadeSpeed: 0.02,
+        color: '#B8860B', // 暗金色
+        update: function(deltaTime) {
+            this.alpha -= this.fadeSpeed;
+            return this.alpha > 0;
+        },
+        draw: function(ctx) {
+            ctx.globalAlpha = this.alpha;
+            ctx.fillStyle = this.color;
+            ctx.fillRect(0, 0, FIELD_WIDTH, FIELD_HEIGHT);
+            ctx.globalAlpha = 1.0;
+        }
+    };
+    
+    // 添加到动画列表
+    gameOverAnimations.push(flashAnimation);
+}
+
+/**
+ * 创建烟花效果
+ * @param {number} x - 烟花的x坐标
+ * @param {number} y - 烟花的y坐标
+ * @param {string} color - 烟花的颜色
+ * @param {number} particleCount - 粒子数量
+ */
+function createFirework(x, y, color, particleCount) {
+    // 创建爆炸效果
+    for (let i = 0; i < particleCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1 + Math.random() * 5;
+        const size = 2 + Math.random() * 4;
+        
+        const particle = {
+            x: x,
+            y: y,
+            size: size,
+            speedX: Math.cos(angle) * speed,
+            speedY: Math.sin(angle) * speed,
+            color: color,
+            alpha: 1,
+            fadeSpeed: 0.01 + Math.random() * 0.02,
+            gravity: 0.05,
+            update: function(deltaTime) {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.speedY += this.gravity;
+                this.alpha -= this.fadeSpeed;
+                return this.alpha > 0;
+            },
+            draw: function(ctx) {
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            }
+        };
+        
+        gameOverAnimations.push(particle);
+    }
+    
+    // 创建闪光效果
+    const flash = {
+        x: x,
+        y: y,
+        radius: 5,
+        maxRadius: 50,
+        alpha: 1,
+        growSpeed: 2,
+        fadeSpeed: 0.05,
+        color: color,
+        update: function(deltaTime) {
+            this.radius += this.growSpeed;
+            this.alpha -= this.fadeSpeed;
+            return this.alpha > 0;
+        },
+        draw: function(ctx) {
+            ctx.globalAlpha = this.alpha;
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+        }
+    };
+    
+    gameOverAnimations.push(flash);
+}
+
+/**
+ * 清除所有动画和定时器
+ */
+function clearAllAnimations() {
+    // 清空所有动画数组
+    gameOverAnimations = [];
+    scoreAnimations = [];
+    confettiParticles = [];
+    
+    // 清除游戏结束定时器
+    if (gameOverTimer) {
+        clearTimeout(gameOverTimer);
+        gameOverTimer = null;
+    }
+    
+    // 清除所有可能的烟花定时器
+    // 使用一个全局变量来存储所有的定时器ID
+    if (window.fireworkTimers && window.fireworkTimers.length > 0) {
+        window.fireworkTimers.forEach(timerId => {
+            clearTimeout(timerId);
+        });
+        window.fireworkTimers = [];
+    }
+    
+    console.log("所有动画和定时器已清除");
 }
 
 // Initialize the game when the page loads
