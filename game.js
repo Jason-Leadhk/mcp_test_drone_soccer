@@ -33,6 +33,9 @@ let lastTimestamp = 0;
 let ready_flag1 = true;
 let ready_flag2 = true;
 
+// 添加全局变量用于记录最后得分的队伍
+let lastScoringTeam = 0; // 0表示没有队伍得分，1表示队伍1得分，2表示队伍2得分
+
 // Canvas and context
 let canvas;
 let ctx;
@@ -52,6 +55,10 @@ const keys = {
     left: false,
     right: false
 };
+
+// 添加全局变量用于动画
+let scoreAnimations = [];
+let confettiParticles = [];
 
 // Initialize the game
 function init() {
@@ -206,6 +213,8 @@ function resetGame() {
     // 重置准备状态标志
     ready_flag1 = true;
     ready_flag2 = true;
+    // 重置最后得分队伍
+    lastScoringTeam = 0;
     
     // Update scoreboard
     document.getElementById('team1-score').textContent = team1Score;
@@ -401,6 +410,9 @@ function update(deltaTime) {
         } catch (e) {
             console.error("Error in checkStrikersReturnedToOwnHalf:", e);
         }
+        
+        // 更新动画
+        updateAnimations(deltaTime);
     } catch (e) {
         console.error("Error in update:", e);
     }
@@ -492,7 +504,7 @@ function showMessage(text, duration = 2000) {
         messageElement = document.createElement('div');
         messageElement.id = 'game-message';
         messageElement.style.position = 'absolute';
-        messageElement.style.top = '100px';
+        messageElement.style.top = '120px';
         messageElement.style.left = '50%';
         messageElement.style.transform = 'translateX(-50%)';
         messageElement.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
@@ -743,11 +755,15 @@ function checkGoals() {
                     team1Score++;
                     // 设置标志为false，需要重新回到己方半场
                     ready_flag1 = false;
+                    // 设置最后得分的队伍为队伍1
+                    lastScoringTeam = 1;
                     console.log(`Team 1 score increased to ${team1Score}`);
                 } else {
                     team2Score++;
                     // 设置标志为false，需要重新回到己方半场
                     ready_flag2 = false;
+                    // 设置最后得分的队伍为队伍2
+                    lastScoringTeam = 2;
                     console.log(`Team 2 score increased to ${team2Score}`);
                 }
                 
@@ -896,6 +912,9 @@ function render() {
     
     // Draw team status indicators
     drawTeamStatusIndicators();
+    
+    // 绘制动画效果
+    drawAnimations();
 }
 
 // Draw the field
@@ -1054,11 +1073,188 @@ function formatTime(seconds) {
 }
 
 /**
- * Update the score display
+ * Update the score display with animation
  */
 function updateScoreDisplay() {
     document.getElementById('team1-score').textContent = team1Score;
     document.getElementById('team2-score').textContent = team2Score;
+    
+    // 创建得分动画
+    createScoreAnimation();
+}
+
+// 创建得分动画效果
+function createScoreAnimation() {
+    // 使用全局变量确定哪个队伍得分，而不是通过比较分数
+    const scoringTeam = lastScoringTeam;
+    const teamColor = scoringTeam === 1 ? TEAM1_COLOR : TEAM2_COLOR;
+    
+    // 创建"GOAL!"文字动画
+    const goalTextAnimation = {
+        text: "GOAL!",
+        x: FIELD_WIDTH / 2,
+        y: FIELD_HEIGHT / 2,
+        size: 20,
+        maxSize: 100,
+        alpha: 0,
+        growSpeed: 3,
+        fadeSpeed: 0.02,
+        color: teamColor,
+        growing: true,
+        update: function(deltaTime) {
+            if (this.growing) {
+                this.size += this.growSpeed;
+                this.alpha += this.fadeSpeed * 2;
+                if (this.size >= this.maxSize) {
+                    this.growing = false;
+                }
+            } else {
+                this.alpha -= this.fadeSpeed;
+            }
+            return this.alpha > 0;
+        },
+        draw: function(ctx) {
+            ctx.globalAlpha = this.alpha;
+            ctx.fillStyle = this.color;
+            ctx.font = `bold ${this.size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(this.text, this.x, this.y);
+            ctx.globalAlpha = 1.0;
+        }
+    };
+    
+    // 添加到动画列表
+    scoreAnimations.push(goalTextAnimation);
+    
+    // 创建得分数字动画
+    const scoreValue = scoringTeam === 1 ? team1Score : team2Score;
+    const scoreTextAnimation = {
+        text: `+1`,
+        x: scoringTeam === 1 ? 100 : FIELD_WIDTH - 100,
+        y: 80,
+        size: 30,
+        alpha: 1,
+        velocity: -2,
+        fadeSpeed: 0.02,
+        color: teamColor,
+        update: function(deltaTime) {
+            this.y += this.velocity;
+            this.alpha -= this.fadeSpeed;
+            return this.alpha > 0;
+        },
+        draw: function(ctx) {
+            ctx.globalAlpha = this.alpha;
+            ctx.fillStyle = this.color;
+            ctx.font = `bold ${this.size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(this.text, this.x, this.y);
+            ctx.globalAlpha = 1.0;
+        }
+    };
+    
+    // 添加到动画列表
+    scoreAnimations.push(scoreTextAnimation);
+    
+    // 创建彩色粒子效果
+    createConfetti(scoringTeam);
+    
+    // 创建闪光效果
+    createFlashEffect(scoringTeam);
+    
+    // 播放得分音效（如果需要）
+    playScoreSound();
+}
+
+// 创建彩色粒子效果
+function createConfetti(team) {
+    const centerX = team === 1 ? FIELD_WIDTH * 0.75 : FIELD_WIDTH * 0.25;
+    const teamColor = team === 1 ? TEAM1_COLOR : TEAM2_COLOR;
+    
+    // 创建100个粒子
+    for (let i = 0; i < 100; i++) {
+        const particle = {
+            x: centerX,
+            y: FIELD_HEIGHT / 2,
+            size: 5 + Math.random() * 10,
+            speedX: (Math.random() - 0.5) * 10,
+            speedY: (Math.random() - 0.5) * 10 - 5, // 向上的初始速度
+            rotation: Math.random() * Math.PI * 2,
+            rotationSpeed: (Math.random() - 0.5) * 0.2,
+            color: Math.random() < 0.7 ? teamColor : 
+                   `hsl(${Math.random() * 360}, 100%, 50%)`,
+            alpha: 1,
+            gravity: 0.1,
+            fadeSpeed: 0.01 + Math.random() * 0.02,
+            update: function(deltaTime) {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.speedY += this.gravity;
+                this.rotation += this.rotationSpeed;
+                this.alpha -= this.fadeSpeed;
+                return this.alpha > 0;
+            },
+            draw: function(ctx) {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.fillStyle = this.color;
+                ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+                ctx.restore();
+            }
+        };
+        confettiParticles.push(particle);
+    }
+}
+
+// 创建闪光效果
+function createFlashEffect(team) {
+    const flashAnimation = {
+        alpha: 0.7,
+        fadeSpeed: 0.05,
+        color: team === 1 ? TEAM1_COLOR : TEAM2_COLOR,
+        update: function(deltaTime) {
+            this.alpha -= this.fadeSpeed;
+            return this.alpha > 0;
+        },
+        draw: function(ctx) {
+            ctx.globalAlpha = this.alpha;
+            ctx.fillStyle = this.color;
+            ctx.fillRect(0, 0, FIELD_WIDTH, FIELD_HEIGHT);
+            ctx.globalAlpha = 1.0;
+        }
+    };
+    
+    // 添加到动画列表
+    scoreAnimations.push(flashAnimation);
+}
+
+// 播放得分音效
+function playScoreSound() {
+    // 如果你想添加音效，可以在这里实现
+    // 例如：
+    // const scoreSound = new Audio('score.mp3');
+    // scoreSound.play();
+}
+
+// 更新动画
+function updateAnimations(deltaTime) {
+    // 更新得分动画
+    scoreAnimations = scoreAnimations.filter(animation => animation.update(deltaTime));
+    
+    // 更新粒子效果
+    confettiParticles = confettiParticles.filter(particle => particle.update(deltaTime));
+}
+
+// 绘制动画
+function drawAnimations() {
+    // 绘制所有动画
+    scoreAnimations.forEach(animation => animation.draw(ctx));
+    
+    // 绘制所有粒子
+    confettiParticles.forEach(particle => particle.draw(ctx));
 }
 
 // 创建虚拟摇杆UI
