@@ -446,7 +446,7 @@ function updatePlayerInput(deltaTime) {
     // Check if player drone should return home after team scored
     if (playerDrone.shouldReturnHome) {
         // Display a message to the player
-        showMessage(`Return to your half of the field!`, 2000);
+        showMessage(`等待全部返回到己方半场!`, 2000);
         
         // Check if drone has reached its own half
         const inOwnHalf = (playerDrone.team === 1 && playerDrone.position.x < FIELD_WIDTH / 2) || 
@@ -456,7 +456,7 @@ function updatePlayerInput(deltaTime) {
             // Drone has returned home, clear the flag
             playerDrone.shouldReturnHome = false;
             console.log(`Player drone has returned to its own half`);
-            showMessage(`You're back in your half!`, 1000);
+            showMessage(`全部已回到己方半场!`, 1000);
         }
     }
     
@@ -1077,13 +1077,13 @@ function drawTeamStatusIndicators() {
     ctx.fillStyle = '#000';
     ctx.font = '12px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('Team 1', 50, 55);
-    ctx.fillText('Team 2', FIELD_WIDTH - 50, 55);
+    ctx.fillText('红队', 50, 55);
+    ctx.fillText('蓝队', FIELD_WIDTH - 50, 55);
     
     // Add status text
     ctx.font = '10px Arial';
-    ctx.fillText(ready_flag1 ? 'Ready' : 'Not Ready', 50, 70);
-    ctx.fillText(ready_flag2 ? 'Ready' : 'Not Ready', FIELD_WIDTH - 50, 70);
+    ctx.fillText(ready_flag1 ? '已就绪' : '未就绪', 50, 70);
+    ctx.fillText(ready_flag2 ? '已就绪' : '未就绪', FIELD_WIDTH - 50, 70);
 }
 
 // Format time as MM:SS
@@ -1112,7 +1112,7 @@ function createScoreAnimation() {
     
     // 创建"GOAL!"文字动画
     const goalTextAnimation = {
-        text: "GOAL!",
+        text: "进球!",
         x: FIELD_WIDTH / 2,
         y: FIELD_HEIGHT / 2,
         size: 20,
@@ -1444,7 +1444,7 @@ function createVictoryAnimations() {
     
     // 创建胜利文字动画
     const victoryTextAnimation = {
-        text: "VICTORY!",
+        text: "胜利!",
         x: FIELD_WIDTH / 2,
         y: FIELD_HEIGHT / 3,
         size: 20,
@@ -1580,7 +1580,7 @@ function createDefeatAnimations() {
     
     // 创建失败文字动画
     const defeatTextAnimation = {
-        text: "DEFEAT",
+        text: "失败",
         x: FIELD_WIDTH / 2,
         y: FIELD_HEIGHT / 3,
         size: 20,
@@ -1696,7 +1696,7 @@ function createTieAnimations() {
     
     // 创建平局文字动画
     const tieTextAnimation = {
-        text: "DRAW",
+        text: "平局",
         x: FIELD_WIDTH / 2,
         y: FIELD_HEIGHT / 3,
         size: 20,
@@ -1918,7 +1918,7 @@ function createVirtualJoystick() {
     joystickContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
     joystickContainer.style.border = '2px solid rgba(255, 255, 255, 0.4)';
     joystickContainer.style.display = 'none'; // 默认隐藏，只在移动设备上显示
-    
+    //joystickContainer.style.display = 'block'  ; 
     // 创建摇杆手柄
     const joystickHandle = document.createElement('div');
     joystickHandle.id = 'joystick-handle';
